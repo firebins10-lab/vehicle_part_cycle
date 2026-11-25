@@ -1,4 +1,5 @@
 import streamlit as st
+import streamlit.components.v1 as components
 
 # 페이지 기본 설정
 st.set_page_config(page_title="자동차 소모품 교체 주기 가이드", page_icon="🚗", layout="wide")
@@ -38,16 +39,16 @@ analyze_btn = st.sidebar.button("🔍 소모품 교체 주기 분석하기", typ
 
 # --- 소모품 기준 데이터 (단위: km) ---
 consumables_db = [
-    {"name": "엔진오일 및 오일필터", "cycle": 10000 if fuel_type != "디젤" else 15000, "fuels": ["휘발유", "디젤", "LPG", "하이브리드"]},
+    {"name": "엔진오일/필터", "cycle": 10000 if fuel_type != "디젤" else 15000, "fuels": ["휘발유", "디젤", "LPG", "하이브리드"]},
     {"name": "에어컨 필터", "cycle": 15000, "fuels": ["휘발유", "디젤", "LPG", "하이브리드", "전기"]},
     {"name": "타이어 위치교환", "cycle": 10000 if car_size == "소형" else 12000, "fuels": ["휘발유", "디젤", "LPG", "하이브리드", "전기"]},
     {"name": "브레이크 패드", "cycle": 35000 if fuel_type not in ["하이브리드", "전기"] else 60000, "fuels": ["휘발유", "디젤", "LPG", "하이브리드", "전기"]},
     {"name": "브레이크 오일", "cycle": 40000, "fuels": ["휘발유", "디젤", "LPG", "하이브리드", "전기"]},
     {"name": "연료 필터", "cycle": 30000 if fuel_type == "디젤" else 60000, "fuels": ["휘발유", "디젤", "LPG", "하이브리드"]},
     {"name": "타이어 교체", "cycle": 50000 if car_size == "소형" else 60000, "fuels": ["휘발유", "디젤", "LPG", "하이브리드", "전기"]},
-    {"name": "냉각수 (부동액)", "cycle": 40000 if fuel_type != "전기" else 60000, "fuels": ["휘발유", "디젤", "LPG", "하이브리드", "전기"]},
+    {"name": "냉각수(부동액)", "cycle": 40000 if fuel_type != "전기" else 60000, "fuels": ["휘발유", "디젤", "LPG", "하이브리드", "전기"]},
     {"name": "감속기 오일", "cycle": 60000, "fuels": ["전기"]},
-    {"name": "미션오일 (변속기오일)", "cycle": 80000, "fuels": ["휘발유", "디젤", "LPG", "하이브리드"]},
+    {"name": "미션오일", "cycle": 80000, "fuels": ["휘발유", "디젤", "LPG", "하이브리드"]},
     {"name": "점화플러그", "cycle": 40000 if fuel_type == "LPG" else 80000, "fuels": ["휘발유", "LPG", "하이브리드"]},
 ]
 
@@ -82,44 +83,62 @@ if analyze_btn:
     # 남은 주행거리가 짧은 순서로 정렬
     results.sort(key=lambda x: x["rem_km"])
 
-    # (6) 수직선(타임라인) 시각화 - 별도 라이브러리 없이 순수 HTML/CSS로 구현
+    # (6) 수직선(타임라인) 시각화 - SVG 벡터 그래픽으로 깨짐 없이 구현
     st.markdown("### 📏 소모품별 다음 교체 시기 수직선 (타임라인)")
     
     max_next_km = max(item["next_km"] for item in results)
     span_km = max(1, max_next_km - mileage)
     
-    # 수직선 상에 마커 생성
-    markers_html = ""
+    svg_width = 1000
+    svg_height = 240
+    start_x = 70
+    end_x = 930
+    line_y = 120
+    
+    # 라벨 높이 4단계로 분산하여 글자 겹침 완벽 방지
+    label_y_levels = [35, 195, 70, 160]
+    
+    svg_items = ""
     for idx, item in enumerate(results):
-        # 현재 위치(0%)부터 가장 먼 교체 시점(95%) 사이의 위치 비율 계산
-        pct = ((item["next_km"] - mileage) / span_km) * 90 + 5
-        # 글자 겹침 방지를 위해 위/아래 번갈아 배치
-        is_top = (idx % 2 == 0)
-        top_pos = "5px" if is_top else "85px"
-        line_top = "45px" if is_top else "65px"
+        # 현재 주행거리부터 최대 교체 거리까지의 비율 위치 계산
+        ratio = (item["next_km"] - mileage) / span_km
+        x = start_x + ratio * (end_x - start_x)
+        y_label = label_y_levels[idx % len(label_y_levels)]
         
-        markers_html += f"""
-        <div style="position: absolute; left: {pct}%; top: {line_top}; width: 2px; height: 20px; background-color: #2b6cb0; transform: translateX(-50%);"></div>
-        <div style="position: absolute; left: {pct}%; top: {top_pos}; transform: translateX(-50%); text-align: center; font-size: 12px; white-space: nowrap; background: #ebf8ff; padding: 3px 6px; border-radius: 4px; border: 1px solid #90cdf4; color: #1a365d;">
-            <b>{item['name']}</b><br>{item['next_km']:,}km
-        </div>
-        """
+        # 수직선에서 라벨까지 연결하는 세로 점선
+        y_line_end = y_label + 15 if y_label < line_y else y_label - 22
+        svg_items += f'<line x1="{x}" y1="{line_y}" x2="{x}" y2="{y_line_end}" stroke="#3182ce" stroke-width="1.5" stroke-dasharray="3,3" />'
+        
+        # 수직선 위의 파란색 포인트
+        svg_items += f'<circle cx="{x}" cy="{line_y}" r="5" fill="#3182ce" />'
+        
+        # 소모품 이름 및 교체 시점 텍스트
+        svg_items += f'''
+        <text x="{x}" y="{y_label}" font-family="sans-serif" font-size="12" font-weight="bold" fill="#1a365d" text-anchor="middle">
+            {item["name"]}
+        </text>
+        <text x="{x}" y="{y_label + 14}" font-family="sans-serif" font-size="11" fill="#4a5568" text-anchor="middle">
+            ({item["next_km"]:,}km)
+        </text>
+        '''
 
-    timeline_html = f"""
-    <div style="position: relative; width: 100%; height: 140px; margin: 20px 0; padding: 0 20px; box-sizing: border-box; overflow-x: auto;">
-        <div style="min-width: 750px; position: relative; height: 100%;">
-            <!-- 가로 수직선 -->
-            <div style="position: absolute; top: 65px; left: 0; right: 0; height: 4px; background-color: #cbd5e0; border-radius: 2px;"></div>
-            <!-- 현재 위치 (빨간색 점) -->
-            <div style="position: absolute; left: 0%; top: 58px; width: 18px; height: 18px; background-color: #e53e3e; border-radius: 50%; transform: translateX(-50%); z-index: 2;"></div>
-            <div style="position: absolute; left: 0%; top: 82px; font-size: 12px; font-weight: bold; color: #e53e3e; white-space: nowrap;">
-                현재 ({mileage:,}km)
-            </div>
-            {markers_html}
-        </div>
+    svg_html = f"""
+    <div style="width: 100%; overflow-x: auto; background: #f8fafc; border-radius: 10px; border: 1px solid #e2e8f0; padding: 10px 0;">
+        <svg width="100%" height="{svg_height}" viewBox="0 0 {svg_width} {svg_height}" preserveAspectRatio="xMidYMid meet">
+            <!-- 메인 수직선 (가로축) -->
+            <line x1="{start_x}" y1="{line_y}" x2="{end_x}" y2="{line_y}" stroke="#cbd5e0" stroke-width="4" stroke-linecap="round" />
+            
+            <!-- 각 소모품 마커 및 라벨 -->
+            {svg_items}
+            
+            <!-- 현재 주행거리 (빨간색 기준점) -->
+            <circle cx="{start_x}" cy="{line_y}" r="8" fill="#e53e3e" />
+            <text x="{start_x}" y="{line_y - 16}" font-family="sans-serif" font-size="13" font-weight="bold" fill="#e53e3e" text-anchor="middle">현재 위치</text>
+            <text x="{start_x}" y="{line_y + 24}" font-family="sans-serif" font-size="12" font-weight="bold" fill="#e53e3e" text-anchor="middle">{mileage:,}km</text>
+        </svg>
     </div>
     """
-    st.markdown(timeline_html, unsafe_allow_html=True)
+    components.html(svg_html, height=265)
 
     # (5) 텍스트 메시지로 소모품별 남은 주행거리 및 남은 일수 출력
     st.markdown("### 📝 소모품별 상세 교체 가이드 (임박한 순서)")
